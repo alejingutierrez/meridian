@@ -7,10 +7,10 @@ def parse_args() -> argparse.Namespace:
         description="Merge media and extra feature files for Meridian"
     )
     parser.add_argument(
-        "--media", required=True, help="Path to CSV containing media data"
+        "--media", required=True, help="Path to CSV/Excel containing media data"
     )
     parser.add_argument(
-        "--extra", required=True, help="Path to CSV with extra features"
+        "--extra", required=True, help="Path to CSV/Excel with extra features"
     )
     parser.add_argument(
         "--output", required=True, help="Path where the merged CSV will be saved"
@@ -38,11 +38,41 @@ def parse_args() -> argparse.Namespace:
         default="population",
         help="Column with population values (renamed to 'population')",
     )
+    parser.add_argument(
+        "--sep",
+        default=",",
+        help="Field separator used in CSV files (default ',')",
+    )
+    parser.add_argument(
+        "--decimal",
+        default=".",
+        help="Decimal character used in CSV files (default '.')",
+    )
+    parser.add_argument(
+        "--date-format",
+        default=None,
+        help=(
+            "Optional pandas datetime format string used to parse the date column. "
+            "When provided, the dates are converted to 'YYYY-MM-DD'."
+        ),
+    )
+    parser.add_argument(
+        "--compute-per-conversion",
+        action="store_true",
+        help=(
+            "Divide revenue column by KPI column before renaming it to "
+            "'revenue_per_conversion'.",
+        ),
+    )
     return parser.parse_args()
 
 
-def load_csv(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path)
+def load_table(path: str, sep: str, decimal: str) -> pd.DataFrame:
+    """Loads a CSV or Excel file into a DataFrame."""
+    if path.lower().endswith(('.xlsx', '.xls')):
+        df = pd.read_excel(path)
+    else:
+        df = pd.read_csv(path, sep=sep, decimal=decimal)
     # Drop common index columns written by pandas.to_csv
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
     return df
@@ -53,12 +83,16 @@ def rename_kpi_columns(
     kpi_col: str,
     revenue_col: str,
     population_col: str,
+    compute_per_conversion: bool,
 ) -> pd.DataFrame:
     """Renames KPI-related columns to Meridian defaults if present."""
     rename_map = {}
     if kpi_col in df.columns:
         rename_map[kpi_col] = "conversions"
     if revenue_col in df.columns:
+        if compute_per_conversion and kpi_col in df.columns:
+            with pd.option_context("mode.chained_assignment", None):
+                df[revenue_col] = df[revenue_col] / df[kpi_col]
         rename_map[revenue_col] = "revenue_per_conversion"
     if population_col in df.columns:
         rename_map[population_col] = "population"
@@ -69,8 +103,15 @@ def rename_kpi_columns(
 
 def main() -> None:
     args = parse_args()
-    media_df = load_csv(args.media)
-    extra_df = load_csv(args.extra)
+    media_df = load_table(args.media, args.sep, args.decimal)
+    extra_df = load_table(args.extra, args.sep, args.decimal)
+
+    if args.date_format:
+        for df in (media_df, extra_df):
+            df[args.date_column] = (
+                pd.to_datetime(df[args.date_column], format=args.date_format)
+                .dt.strftime("%Y-%m-%d")
+            )
 
     merge_cols = [args.date_column]
     if "geo" in media_df.columns and "geo" in extra_df.columns:
@@ -78,7 +119,11 @@ def main() -> None:
 
     merged = pd.merge(media_df, extra_df, on=merge_cols, how="inner")
     merged = rename_kpi_columns(
-        merged, args.kpi_column, args.revenue_column, args.population_column
+        merged,
+        args.kpi_column,
+        args.revenue_column,
+        args.population_column,
+        args.compute_per_conversion,
     )
 
     merged.to_csv(args.output, index=False)
