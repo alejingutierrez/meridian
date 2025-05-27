@@ -155,3 +155,33 @@ To cite this repository:
   year = {2025},
 }
 ```
+
+## Uso del script de combinación de datos (merge_inputs.py)
+
+Este repositorio incluye un script utilitario para combinar archivos de medios y variables extra antes del análisis con Meridian. El script `merge_inputs.py` se encuentra en la carpeta `scripts/` y facilita la preparación de datos.
+
+### Argumentos requeridos
+
+*   `--media`: Ruta al archivo CSV de datos de medios (ej. `meridian/data/my_data/media_consolidada.csv`)
+*   `--extra`: Ruta al archivo CSV de variables extra (ej. `meridian/data/my_data/extra_data.csv`)
+*   `--output`: Ruta donde se guardará el archivo combinado (ej. `meridian/data/my_data/merged.csv`)
+
+### Argumentos opcionales principales
+
+*   `--sep`: Separador de columnas en los archivos CSV (por defecto: `,`). Para archivos que usan `;`, especifica `--sep ';'`
+*   `--decimal`: Separador decimal (por defecto: `.`). Para archivos que usan `,`, especifica `--decimal ','`
+*   `--date-column`: Nombre de la columna de fecha si es diferente a `time` (ej. `--date-column fecha`)
+*   `--kpi-column`: Nombre de la columna de KPI (por defecto: `conversions`)
+*   `--revenue-column`: Nombre de la columna de ingresos (por defecto: `revenue`)
+*   `--date-format`: Formato de la columna de fecha (por defecto: `%Y-%m-%d`)
+
+### Ejemplo de uso
+
+```bash
+python scripts/merge_inputs.py \
+    --media meridian/data/my_data/media_consolidada.csv \
+    --extra meridian/data/my_data/extra_data.csv \
+    --output meridian/data/my_data/merged.csv \
+    --sep ';' \
+    --date-column fecha
+```
