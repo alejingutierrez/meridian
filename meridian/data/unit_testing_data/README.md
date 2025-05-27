@@ -1,2 +1,0 @@
-In this directory, the `csv` files are used for unit testing only. For more
-realistic datasets, please refer to [simulated_data](https://github.com/google/meridian/tree/main/meridian/data/simulated_data).
