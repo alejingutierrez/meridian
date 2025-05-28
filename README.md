@@ -175,6 +175,8 @@ Este repositorio incluye un script utilitario para combinar archivos de medios y
 *   `--revenue-column`: Nombre de la columna de ingresos (por defecto: `revenue`)
 *   `--date-format`: Formato de la columna de fecha. Si no se especifica, el
     script intentará inferirlo automáticamente.
+*   Las columnas numéricas se convierten automáticamente a valores numéricos
+    cuando es posible para evitar errores de tipado.
 
 ### Ejemplo de uso
 
