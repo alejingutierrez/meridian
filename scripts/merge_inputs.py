@@ -177,8 +177,10 @@ def load_table(
     """Loads a CSV or Excel file into a DataFrame.
 
     The function tries to cast numeric-like columns to proper numeric types
-    while leaving the date column untouched. This avoids accidental conversion
-    of date strings to ``NaN`` values which would later cause type errors when
+    while leaving the date column untouched. Percent signs are stripped and
+    decimal as well as thousands separators are normalized so that values like
+    ``"5,3%"`` are correctly interpreted. This avoids accidental conversion of
+    date strings to ``NaN`` values which would later cause type errors when
     loading the data with ``CsvDataLoader``.
     """
 
@@ -202,7 +204,15 @@ def load_table(
     cols_to_clean = df.columns.difference([date_column])
     object_cols = df[cols_to_clean].select_dtypes("object").columns
     if not object_cols.empty:
-        df[object_cols] = df[object_cols].apply(lambda c: c.str.strip().str.rstrip("%"))
+        def _clean_string(c: pd.Series) -> pd.Series:
+            s = c.str.strip().str.rstrip("%")
+            if thousands is not None:
+                s = s.str.replace(thousands, "", regex=False)
+            if decimal != ".":
+                s = s.str.replace(decimal, ".", regex=False)
+            return s
+
+        df[object_cols] = df[object_cols].apply(_clean_string)
 
     # Cast all columns except the date column to numeric when possible
     cols_to_convert = df.columns.difference([date_column])
