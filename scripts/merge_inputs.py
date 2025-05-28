@@ -106,16 +106,21 @@ def main() -> None:
     media_df = load_table(args.media, args.sep, args.decimal)
     extra_df = load_table(args.extra, args.sep, args.decimal)
 
+    merge_cols = [args.date_column]
+    if "geo" in media_df.columns and "geo" in extra_df.columns:
+        merge_cols.append("geo")
+
+    # Remove duplicate rows that would cause Cartesian products during merging
+    for df in (media_df, extra_df):
+        if df.duplicated(subset=merge_cols).any():
+            df.drop_duplicates(subset=merge_cols, inplace=True)
+
     if args.date_format:
         for df in (media_df, extra_df):
             df[args.date_column] = (
                 pd.to_datetime(df[args.date_column], format=args.date_format)
                 .dt.strftime("%Y-%m-%d")
             )
-
-    merge_cols = [args.date_column]
-    if "geo" in media_df.columns and "geo" in extra_df.columns:
-        merge_cols.append("geo")
 
     merged = pd.merge(media_df, extra_df, on=merge_cols, how="inner")
     merged = rename_kpi_columns(
