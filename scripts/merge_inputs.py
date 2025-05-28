@@ -52,8 +52,9 @@ def parse_args() -> argparse.Namespace:
         "--date-format",
         default=None,
         help=(
-            "Optional pandas datetime format string used to parse the date column. "
-            "When provided, the dates are converted to 'YYYY-MM-DD'."
+            "Pandas datetime format string for parsing the date column. If not "
+            "provided, the format will be inferred automatically. In all cases "
+            "the dates are converted to 'YYYY-MM-DD'."
         ),
     )
     parser.add_argument(
@@ -69,7 +70,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_table(path: str, sep: str, decimal: str) -> pd.DataFrame:
     """Loads a CSV or Excel file into a DataFrame."""
-    if path.lower().endswith(('.xlsx', '.xls')):
+    if path.lower().endswith((".xlsx", ".xls")):
         df = pd.read_excel(path)
     else:
         df = pd.read_csv(path, sep=sep, decimal=decimal)
@@ -115,12 +116,10 @@ def main() -> None:
         if df.duplicated(subset=merge_cols).any():
             df.drop_duplicates(subset=merge_cols, inplace=True)
 
-    if args.date_format:
-        for df in (media_df, extra_df):
-            df[args.date_column] = (
-                pd.to_datetime(df[args.date_column], format=args.date_format)
-                .dt.strftime("%Y-%m-%d")
-            )
+    for df in (media_df, extra_df):
+        df[args.date_column] = pd.to_datetime(
+            df[args.date_column], format=args.date_format
+        ).dt.strftime("%Y-%m-%d")
 
     merged = pd.merge(media_df, extra_df, on=merge_cols, how="inner")
     merged = rename_kpi_columns(

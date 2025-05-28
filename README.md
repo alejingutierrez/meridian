@@ -173,7 +173,8 @@ Este repositorio incluye un script utilitario para combinar archivos de medios y
 *   `--date-column`: Nombre de la columna de fecha si es diferente a `time` (ej. `--date-column fecha`)
 *   `--kpi-column`: Nombre de la columna de KPI (por defecto: `conversions`)
 *   `--revenue-column`: Nombre de la columna de ingresos (por defecto: `revenue`)
-*   `--date-format`: Formato de la columna de fecha (por defecto: `%Y-%m-%d`)
+*   `--date-format`: Formato de la columna de fecha. Si no se especifica, el
+    script intentará inferirlo automáticamente.
 
 ### Ejemplo de uso
 
