@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Column with revenue per KPI values (renamed to"
             " 'revenue_per_conversion')"
-        ),
+        )
     )
     parser.add_argument(
         "--population-column",
@@ -55,15 +55,15 @@ def parse_args() -> argparse.Namespace:
             "Pandas datetime format string for parsing the date column. If not "
             "provided, the format will be inferred automatically. In all cases "
             "the dates are converted to 'YYYY-MM-DD'."
-        ),
+        )
     )
     parser.add_argument(
         "--compute-per-conversion",
         action="store_true",
         help=(
             "Divide revenue column by KPI column before renaming it to "
-            "'revenue_per_conversion'.",
-        ),
+            "'revenue_per_conversion'."
+        )
     )
     return parser.parse_args()
 
@@ -189,6 +189,11 @@ def main() -> None:
     merged[cols_to_convert] = merged[cols_to_convert].apply(
         pd.to_numeric, errors="coerce"
     )
+
+    # Replace any remaining NA values with a small positive number to
+    # avoid validation errors when loading the data with Meridian. This is
+    # applied to all columns other than the date column.
+    merged[cols_to_convert] = merged[cols_to_convert].fillna(0.001)
 
     merged.to_csv(args.output, index=False)
 
