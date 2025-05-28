@@ -163,10 +163,17 @@ def parse_args() -> argparse.Namespace:
             "all other numeric columns are summed."
         ),
     )
+    parser.add_argument(
+        "--thousands",
+        default=None,
+        help="Thousands separator used in CSV files (default: None)",
+    )
     return parser.parse_args()
 
 
-def load_table(path: str, sep: str, decimal: str, date_column: str) -> pd.DataFrame:
+def load_table(
+    path: str, sep: str, decimal: str, date_column: str, thousands: str | None
+) -> pd.DataFrame:
     """Loads a CSV or Excel file into a DataFrame.
 
     The function tries to cast numeric-like columns to proper numeric types
@@ -178,10 +185,24 @@ def load_table(path: str, sep: str, decimal: str, date_column: str) -> pd.DataFr
     if path.lower().endswith((".xlsx", ".xls")):
         df = pd.read_excel(path)
     else:
-        df = pd.read_csv(path, sep=sep, decimal=decimal)
+        df = pd.read_csv(
+            path,
+            sep=sep,
+            decimal=decimal,
+            thousands=thousands,
+            encoding="utf-8-sig",
+            skipinitialspace=True,
+        )
 
     # Drop common index columns written by pandas.to_csv
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+    df.columns = df.columns.str.strip()
+
+    # Strip whitespace and trailing percent signs from object columns
+    cols_to_clean = df.columns.difference([date_column])
+    object_cols = df[cols_to_clean].select_dtypes("object").columns
+    if not object_cols.empty:
+        df[object_cols] = df[object_cols].apply(lambda c: c.str.strip().str.rstrip("%"))
 
     # Cast all columns except the date column to numeric when possible
     cols_to_convert = df.columns.difference([date_column])
@@ -240,8 +261,12 @@ def rename_kpi_columns(
 
 def main() -> None:
     args = parse_args()
-    media_df = load_table(args.media, args.sep, args.decimal, args.date_column)
-    extra_df = load_table(args.extra, args.sep, args.decimal, args.date_column)
+    media_df = load_table(
+        args.media, args.sep, args.decimal, args.date_column, args.thousands
+    )
+    extra_df = load_table(
+        args.extra, args.sep, args.decimal, args.date_column, args.thousands
+    )
 
     merge_cols = [args.date_column]
     if "geo" in media_df.columns and "geo" in extra_df.columns:
