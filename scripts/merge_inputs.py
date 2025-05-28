@@ -170,6 +170,19 @@ def main() -> None:
         args.compute_per_conversion,
     )
 
+    # Fill NaN values in media columns with a small value to avoid
+    # downstream validation errors when loading the CSV with Meridian.
+    media_like = merged.columns.str.contains(
+        "impression", case=False
+    ) | merged.columns.str.contains(
+        "spend", case=False
+    ) | merged.columns.str.contains(
+        "investment", case=False
+    )
+    media_cols = merged.columns[media_like]
+    if not media_cols.empty:
+        merged[media_cols] = merged[media_cols].fillna(0.001)
+
     # Convert numeric-like columns to proper numeric dtypes before saving.
     # Exclude the date column to preserve its "YYYY-MM-DD" format.
     cols_to_convert = merged.columns.difference([args.date_column])
