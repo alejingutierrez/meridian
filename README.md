@@ -170,6 +170,7 @@ Este repositorio incluye un script utilitario para combinar archivos de medios y
 
 *   `--sep`: Separador de columnas en los archivos CSV (por defecto: `,`). Para archivos que usan `;`, especifica `--sep ';'`
 *   `--decimal`: Separador decimal (por defecto: `.`). Para archivos que usan `,`, especifica `--decimal ','`
+*   `--thousands`: Separador de miles en los archivos CSV si existe (por ejemplo `.`)
 *   `--date-column`: Nombre de la columna de fecha si es diferente a `time` (ej. `--date-column fecha`)
 *   `--kpi-column`: Nombre de la columna de KPI (por defecto: `conversions`)
 *   `--revenue-column`: Nombre de la columna de ingresos (por defecto: `revenue`)
@@ -188,6 +189,8 @@ python scripts/merge_inputs.py \
     --extra meridian/data/my_data/extra_data.csv \
     --output meridian/data/my_data/merged.csv \
     --sep ';' \
+    --decimal ',' \
+    --thousands '.' \
     --date-column fecha \
     --aggregate-weekly
 ```
