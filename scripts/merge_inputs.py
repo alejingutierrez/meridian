@@ -2,6 +2,44 @@ import argparse
 import pandas as pd
 
 
+def _ensure_regular_time_index(
+    df: pd.DataFrame, date_column: str, geo_column: str | None = None
+) -> pd.DataFrame:
+    """Ensures that the time column is regularly spaced.
+
+    Missing time periods are inserted with NA values so that Meridian's
+    input validator does not fail on irregular intervals.
+    """
+
+    df[date_column] = pd.to_datetime(df[date_column])
+    if geo_column is not None and geo_column in df.columns:
+        geos = df[geo_column].unique()
+    else:
+        geos = [None]
+
+    frames = []
+    for geo in geos:
+        geo_df = df if geo is None else df[df[geo_column] == geo]
+        times = geo_df[date_column].sort_values()
+        if len(times) < 2:
+            frames.append(geo_df)
+            continue
+        diffs = times.diff().dropna().dt.days
+        freq = int(diffs.mode().iloc[0]) if not diffs.mode().empty else int(diffs.iloc[0])
+        full_range = pd.date_range(times.min(), times.max(), freq=f"{freq}D")
+        if geo is None:
+            reindexed = geo_df.set_index(date_column).reindex(full_range)
+            reindexed = reindexed.reset_index().rename(columns={"index": date_column})
+        else:
+            idx = pd.MultiIndex.from_product([[geo], full_range], names=[geo_column, date_column])
+            reindexed = geo_df.set_index([geo_column, date_column]).reindex(idx).reset_index()
+        frames.append(reindexed)
+
+    result = pd.concat(frames, ignore_index=True)
+    result[date_column] = result[date_column].dt.strftime("%Y-%m-%d")
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Merge media and extra feature files for Meridian"
@@ -160,6 +198,11 @@ def main() -> None:
         ).dt.strftime("%Y-%m-%d")
 
     merged = pd.merge(media_df, extra_df, on=merge_cols, how="inner")
+    merged = _ensure_regular_time_index(
+        merged,
+        date_column=args.date_column,
+        geo_column="geo" if "geo" in merged.columns else None,
+    )
     if "population" not in merged.columns:
         merged["population"] = 1
     merged = rename_kpi_columns(
