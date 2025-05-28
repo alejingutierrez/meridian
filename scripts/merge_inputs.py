@@ -86,19 +86,44 @@ def rename_kpi_columns(
     population_col: str,
     compute_per_conversion: bool,
 ) -> pd.DataFrame:
-    """Renames KPI-related columns to Meridian defaults if present."""
-    rename_map = {}
+    """Renames KPI-related columns to Meridian defaults if present.
+
+    Raises:
+        ValueError: If any of the provided column names are not found and the
+            DataFrame doesn't already contain the expected Meridian column.
+    """
+
+    rename_map: dict[str, str] = {}
+    missing: list[str] = []
+
     if kpi_col in df.columns:
         rename_map[kpi_col] = "conversions"
+    elif "conversions" not in df.columns:
+        missing.append(kpi_col)
+
     if revenue_col in df.columns:
         if compute_per_conversion and kpi_col in df.columns:
             with pd.option_context("mode.chained_assignment", None):
                 df[revenue_col] = df[revenue_col] / df[kpi_col]
         rename_map[revenue_col] = "revenue_per_conversion"
+    elif "revenue_per_conversion" not in df.columns:
+        missing.append(revenue_col)
+
     if population_col in df.columns:
         rename_map[population_col] = "population"
+    elif "population" not in df.columns:
+        missing.append(population_col)
+
+    if missing:
+        raise ValueError(
+            "Column(s) %s not found in the input files. "
+            "Use the --kpi-column/--revenue-column/--population-column "
+            "arguments to specify the correct names." % ", ".join(missing)
+        )
+
     if rename_map:
         df = df.rename(columns=rename_map)
+
     return df
 
 
@@ -122,6 +147,8 @@ def main() -> None:
         ).dt.strftime("%Y-%m-%d")
 
     merged = pd.merge(media_df, extra_df, on=merge_cols, how="inner")
+    if "population" not in merged.columns:
+        merged["population"] = 1
     merged = rename_kpi_columns(
         merged,
         args.kpi_column,
