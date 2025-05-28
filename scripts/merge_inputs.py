@@ -68,16 +68,27 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_table(path: str, sep: str, decimal: str) -> pd.DataFrame:
-    """Loads a CSV or Excel file into a DataFrame."""
+def load_table(path: str, sep: str, decimal: str, date_column: str) -> pd.DataFrame:
+    """Loads a CSV or Excel file into a DataFrame.
+
+    The function tries to cast numeric-like columns to proper numeric types
+    while leaving the date column untouched. This avoids accidental conversion
+    of date strings to ``NaN`` values which would later cause type errors when
+    loading the data with ``CsvDataLoader``.
+    """
+
     if path.lower().endswith((".xlsx", ".xls")):
         df = pd.read_excel(path)
     else:
         df = pd.read_csv(path, sep=sep, decimal=decimal)
+
     # Drop common index columns written by pandas.to_csv
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
-    # Ensure numeric columns are read as numeric when possible
-    df = df.apply(pd.to_numeric, errors="coerce")
+
+    # Cast all columns except the date column to numeric when possible
+    cols_to_convert = df.columns.difference([date_column])
+    df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors="coerce")
+
     return df
 
 
@@ -131,8 +142,8 @@ def rename_kpi_columns(
 
 def main() -> None:
     args = parse_args()
-    media_df = load_table(args.media, args.sep, args.decimal)
-    extra_df = load_table(args.extra, args.sep, args.decimal)
+    media_df = load_table(args.media, args.sep, args.decimal, args.date_column)
+    extra_df = load_table(args.extra, args.sep, args.decimal, args.date_column)
 
     merge_cols = [args.date_column]
     if "geo" in media_df.columns and "geo" in extra_df.columns:
@@ -159,8 +170,12 @@ def main() -> None:
         args.compute_per_conversion,
     )
 
-    # Convert numeric-like columns to proper numeric dtypes before saving
-    merged = merged.apply(pd.to_numeric, errors="coerce")
+    # Convert numeric-like columns to proper numeric dtypes before saving.
+    # Exclude the date column to preserve its "YYYY-MM-DD" format.
+    cols_to_convert = merged.columns.difference([args.date_column])
+    merged[cols_to_convert] = merged[cols_to_convert].apply(
+        pd.to_numeric, errors="coerce"
+    )
 
     merged.to_csv(args.output, index=False)
 
