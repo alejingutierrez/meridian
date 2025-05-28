@@ -175,6 +175,8 @@ Este repositorio incluye un script utilitario para combinar archivos de medios y
 *   `--revenue-column`: Nombre de la columna de ingresos (por defecto: `revenue`)
 *   `--date-format`: Formato de la columna de fecha. Si no se especifica, el
     script intentará inferirlo automáticamente.
+*   `--aggregate-weekly`: Agrupa las filas diarias a nivel semanal usando lunes
+    como inicio de cada semana.
 *   Las columnas numéricas se convierten automáticamente a valores numéricos
     cuando es posible para evitar errores de tipado.
 
@@ -186,5 +188,6 @@ python scripts/merge_inputs.py \
     --extra meridian/data/my_data/extra_data.csv \
     --output meridian/data/my_data/merged.csv \
     --sep ';' \
-    --date-column fecha
+    --date-column fecha \
+    --aggregate-weekly
 ```

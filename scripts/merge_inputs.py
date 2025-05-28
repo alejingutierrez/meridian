@@ -40,6 +40,27 @@ def _ensure_regular_time_index(
     return result
 
 
+def _aggregate_weekly(
+    df: pd.DataFrame, date_column: str, geo_column: str | None = None
+) -> pd.DataFrame:
+    """Aggregates daily data to weekly sums using Monday as the week start."""
+
+    df[date_column] = pd.to_datetime(df[date_column])
+    df[date_column] = df[date_column] - pd.to_timedelta(
+        df[date_column].dt.weekday, unit="D"
+    )
+
+    group_cols = [date_column]
+    if geo_column is not None and geo_column in df.columns:
+        group_cols.insert(0, geo_column)
+
+    numeric_cols = df.select_dtypes(include="number").columns
+    aggregated = df.groupby(group_cols, as_index=False)[numeric_cols].sum()
+
+    aggregated[date_column] = aggregated[date_column].dt.strftime("%Y-%m-%d")
+    return aggregated
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Merge media and extra feature files for Meridian"
@@ -102,6 +123,13 @@ def parse_args() -> argparse.Namespace:
             "Divide revenue column by KPI column before renaming it to "
             "'revenue_per_conversion'."
         )
+    )
+    parser.add_argument(
+        "--aggregate-weekly",
+        action="store_true",
+        help=(
+            "Aggregate daily rows to weekly sums using Monday as the first day"
+        ),
     )
     return parser.parse_args()
 
@@ -198,6 +226,14 @@ def main() -> None:
         ).dt.strftime("%Y-%m-%d")
 
     merged = pd.merge(media_df, extra_df, on=merge_cols, how="inner")
+
+    if args.aggregate_weekly:
+        merged = _aggregate_weekly(
+            merged,
+            date_column=args.date_column,
+            geo_column="geo" if "geo" in merged.columns else None,
+        )
+
     merged = _ensure_regular_time_index(
         merged,
         date_column=args.date_column,
