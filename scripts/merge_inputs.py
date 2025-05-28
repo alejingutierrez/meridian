@@ -25,14 +25,20 @@ def _ensure_regular_time_index(
             frames.append(geo_df)
             continue
         diffs = times.diff().dropna().dt.days
-        freq = int(diffs.mode().iloc[0]) if not diffs.mode().empty else int(diffs.iloc[0])
+        freq = (
+            int(diffs.mode().iloc[0]) if not diffs.mode().empty else int(diffs.iloc[0])
+        )
         full_range = pd.date_range(times.min(), times.max(), freq=f"{freq}D")
         if geo is None:
             reindexed = geo_df.set_index(date_column).reindex(full_range)
             reindexed = reindexed.reset_index().rename(columns={"index": date_column})
         else:
-            idx = pd.MultiIndex.from_product([[geo], full_range], names=[geo_column, date_column])
-            reindexed = geo_df.set_index([geo_column, date_column]).reindex(idx).reset_index()
+            idx = pd.MultiIndex.from_product(
+                [[geo], full_range], names=[geo_column, date_column]
+            )
+            reindexed = (
+                geo_df.set_index([geo_column, date_column]).reindex(idx).reset_index()
+            )
         frames.append(reindexed)
 
     result = pd.concat(frames, ignore_index=True)
@@ -40,10 +46,29 @@ def _ensure_regular_time_index(
     return result
 
 
+MEAN_COLUMNS = [
+    "nps",
+    "ins",
+    "ces",
+    "gqv",
+    "haceb_marca_proximas_comprar",
+    "haceb_marca_top_of_heart",
+    "haceb_recordacion_top_of_mind",
+]
+# Columns with names that start with "descuento" are averaged as well.
+
+
 def _aggregate_weekly(
-    df: pd.DataFrame, date_column: str, geo_column: str | None = None
+    df: pd.DataFrame,
+    date_column: str,
+    geo_column: str | None = None,
+    mean_columns: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Aggregates daily data to weekly sums using Monday as the week start."""
+    """Aggregates daily data to weekly values using Monday as week start.
+
+    Columns listed in ``mean_columns`` are averaged; all other numeric columns
+    are summed.
+    """
 
     df[date_column] = pd.to_datetime(df[date_column])
     df[date_column] = df[date_column] - pd.to_timedelta(
@@ -54,8 +79,19 @@ def _aggregate_weekly(
     if geo_column is not None and geo_column in df.columns:
         group_cols.insert(0, geo_column)
 
-    numeric_cols = df.select_dtypes(include="number").columns
-    aggregated = df.groupby(group_cols, as_index=False)[numeric_cols].sum()
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    mean_columns = [c for c in (mean_columns or []) if c in numeric_cols]
+    discount_cols = [c for c in numeric_cols if c.lower().startswith("descuento")]
+    for col in discount_cols:
+        if col not in mean_columns:
+            mean_columns.append(col)
+
+    agg_dict = {c: "mean" for c in mean_columns}
+    for col in numeric_cols:
+        if col not in agg_dict:
+            agg_dict[col] = "sum"
+
+    aggregated = df.groupby(group_cols, as_index=False).agg(agg_dict)
 
     aggregated[date_column] = aggregated[date_column].dt.strftime("%Y-%m-%d")
     return aggregated
@@ -90,7 +126,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Column with revenue per KPI values (renamed to"
             " 'revenue_per_conversion')"
-        )
+        ),
     )
     parser.add_argument(
         "--population-column",
@@ -114,7 +150,7 @@ def parse_args() -> argparse.Namespace:
             "Pandas datetime format string for parsing the date column. If not "
             "provided, the format will be inferred automatically. In all cases "
             "the dates are converted to 'YYYY-MM-DD'."
-        )
+        ),
     )
     parser.add_argument(
         "--compute-per-conversion",
@@ -122,14 +158,12 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Divide revenue column by KPI column before renaming it to "
             "'revenue_per_conversion'."
-        )
+        ),
     )
     parser.add_argument(
         "--aggregate-weekly",
         action="store_true",
-        help=(
-            "Aggregate daily rows to weekly sums using Monday as the first day"
-        ),
+        help=("Aggregate daily rows to weekly sums using Monday as the first day"),
     )
     return parser.parse_args()
 
@@ -151,8 +185,12 @@ def load_table(path: str, sep: str, decimal: str, date_column: str) -> pd.DataFr
     # Drop common index columns written by pandas.to_csv
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
 
-    # Cast all columns except the date column to numeric when possible
+    # Cast all columns except the date column to numeric when possible,
+    # respecting the decimal separator used in the input file.
     cols_to_convert = df.columns.difference([date_column])
+    for col in cols_to_convert:
+        if df[col].dtype == "object":
+            df[col] = df[col].str.replace(decimal, ".", regex=False)
     df[cols_to_convert] = df[cols_to_convert].apply(pd.to_numeric, errors="coerce")
 
     return df
@@ -232,6 +270,7 @@ def main() -> None:
             merged,
             date_column=args.date_column,
             geo_column="geo" if "geo" in merged.columns else None,
+            mean_columns=MEAN_COLUMNS,
         )
 
     merged = _ensure_regular_time_index(
@@ -251,12 +290,10 @@ def main() -> None:
 
     # Fill NaN values in media columns with a small value to avoid
     # downstream validation errors when loading the CSV with Meridian.
-    media_like = merged.columns.str.contains(
-        "impression", case=False
-    ) | merged.columns.str.contains(
-        "spend", case=False
-    ) | merged.columns.str.contains(
-        "investment", case=False
+    media_like = (
+        merged.columns.str.contains("impression", case=False)
+        | merged.columns.str.contains("spend", case=False)
+        | merged.columns.str.contains("investment", case=False)
     )
     media_cols = merged.columns[media_like]
     if not media_cols.empty:
@@ -265,6 +302,9 @@ def main() -> None:
     # Convert numeric-like columns to proper numeric dtypes before saving.
     # Exclude the date column to preserve its "YYYY-MM-DD" format.
     cols_to_convert = merged.columns.difference([args.date_column])
+    for col in cols_to_convert:
+        if merged[col].dtype == "object":
+            merged[col] = merged[col].str.replace(args.decimal, ".", regex=False)
     merged[cols_to_convert] = merged[cols_to_convert].apply(
         pd.to_numeric, errors="coerce"
     )
@@ -274,7 +314,7 @@ def main() -> None:
     # applied to all columns other than the date column.
     merged[cols_to_convert] = merged[cols_to_convert].fillna(0.001)
 
-    merged.to_csv(args.output, index=False)
+    merged.to_csv(args.output, index=False, sep=args.sep, decimal=args.decimal)
 
 
 if __name__ == "__main__":
