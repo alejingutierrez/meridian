@@ -25,14 +25,20 @@ def _ensure_regular_time_index(
             frames.append(geo_df)
             continue
         diffs = times.diff().dropna().dt.days
-        freq = int(diffs.mode().iloc[0]) if not diffs.mode().empty else int(diffs.iloc[0])
+        freq = (
+            int(diffs.mode().iloc[0]) if not diffs.mode().empty else int(diffs.iloc[0])
+        )
         full_range = pd.date_range(times.min(), times.max(), freq=f"{freq}D")
         if geo is None:
             reindexed = geo_df.set_index(date_column).reindex(full_range)
             reindexed = reindexed.reset_index().rename(columns={"index": date_column})
         else:
-            idx = pd.MultiIndex.from_product([[geo], full_range], names=[geo_column, date_column])
-            reindexed = geo_df.set_index([geo_column, date_column]).reindex(idx).reset_index()
+            idx = pd.MultiIndex.from_product(
+                [[geo], full_range], names=[geo_column, date_column]
+            )
+            reindexed = (
+                geo_df.set_index([geo_column, date_column]).reindex(idx).reset_index()
+            )
         frames.append(reindexed)
 
     result = pd.concat(frames, ignore_index=True)
@@ -43,7 +49,11 @@ def _ensure_regular_time_index(
 def _aggregate_weekly(
     df: pd.DataFrame, date_column: str, geo_column: str | None = None
 ) -> pd.DataFrame:
-    """Aggregates daily data to weekly sums using Monday as the week start."""
+    """Aggregates daily data to weekly using sums or averages as required.
+
+    The week starts on Monday. Some survey metrics should be averaged over the
+    week while all other numeric columns are summed.
+    """
 
     df[date_column] = pd.to_datetime(df[date_column])
     df[date_column] = df[date_column] - pd.to_timedelta(
@@ -55,7 +65,25 @@ def _aggregate_weekly(
         group_cols.insert(0, geo_column)
 
     numeric_cols = df.select_dtypes(include="number").columns
-    aggregated = df.groupby(group_cols, as_index=False)[numeric_cols].sum()
+
+    avg_cols = {
+        "nps",
+        "ins",
+        "ces",
+        "gqv",
+        "haceb_marca_proximas_comprar",
+        "haceb_marca_top_of_heart",
+        "haceb_recordacion_top_of_mind",
+    }
+
+    agg_dict: dict[str, str] = {}
+    for col in numeric_cols:
+        if col in avg_cols or col.startswith("descuento"):
+            agg_dict[col] = "mean"
+        else:
+            agg_dict[col] = "sum"
+
+    aggregated = df.groupby(group_cols, as_index=False).agg(agg_dict)
 
     aggregated[date_column] = aggregated[date_column].dt.strftime("%Y-%m-%d")
     return aggregated
@@ -90,7 +118,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Column with revenue per KPI values (renamed to"
             " 'revenue_per_conversion')"
-        )
+        ),
     )
     parser.add_argument(
         "--population-column",
@@ -105,7 +133,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--decimal",
         default=".",
-        help="Decimal character used in CSV files (default '.')",
+        help=(
+            "Decimal character used when reading and writing CSV files " "(default '.')"
+        ),
     )
     parser.add_argument(
         "--date-format",
@@ -114,7 +144,7 @@ def parse_args() -> argparse.Namespace:
             "Pandas datetime format string for parsing the date column. If not "
             "provided, the format will be inferred automatically. In all cases "
             "the dates are converted to 'YYYY-MM-DD'."
-        )
+        ),
     )
     parser.add_argument(
         "--compute-per-conversion",
@@ -122,13 +152,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Divide revenue column by KPI column before renaming it to "
             "'revenue_per_conversion'."
-        )
+        ),
     )
     parser.add_argument(
         "--aggregate-weekly",
         action="store_true",
         help=(
-            "Aggregate daily rows to weekly sums using Monday as the first day"
+            "Aggregate daily rows to weekly values using Monday as the first day. "
+            "Survey metrics and columns starting with 'descuento' are averaged; "
+            "all other numeric columns are summed."
         ),
     )
     return parser.parse_args()
@@ -251,12 +283,10 @@ def main() -> None:
 
     # Fill NaN values in media columns with a small value to avoid
     # downstream validation errors when loading the CSV with Meridian.
-    media_like = merged.columns.str.contains(
-        "impression", case=False
-    ) | merged.columns.str.contains(
-        "spend", case=False
-    ) | merged.columns.str.contains(
-        "investment", case=False
+    media_like = (
+        merged.columns.str.contains("impression", case=False)
+        | merged.columns.str.contains("spend", case=False)
+        | merged.columns.str.contains("investment", case=False)
     )
     media_cols = merged.columns[media_like]
     if not media_cols.empty:
@@ -274,7 +304,12 @@ def main() -> None:
     # applied to all columns other than the date column.
     merged[cols_to_convert] = merged[cols_to_convert].fillna(0.001)
 
-    merged.to_csv(args.output, index=False)
+    merged.to_csv(
+        args.output,
+        index=False,
+        sep=args.sep,
+        decimal=args.decimal,
+    )
 
 
 if __name__ == "__main__":
