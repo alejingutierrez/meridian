@@ -77,7 +77,7 @@ def load_table(path: str, sep: str, decimal: str) -> pd.DataFrame:
     # Drop common index columns written by pandas.to_csv
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
     # Ensure numeric columns are read as numeric when possible
-    df = df.apply(pd.to_numeric, errors="ignore")
+    df = df.apply(pd.to_numeric, errors="coerce")
     return df
 
 
@@ -160,7 +160,7 @@ def main() -> None:
     )
 
     # Convert numeric-like columns to proper numeric dtypes before saving
-    merged = merged.apply(pd.to_numeric, errors="ignore")
+    merged = merged.apply(pd.to_numeric, errors="coerce")
 
     merged.to_csv(args.output, index=False)
 
